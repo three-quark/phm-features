@@ -1,6 +1,4 @@
 from __future__ import absolute_import, unicode_literals
-from scipy.fftback import fft,ifft
-from . import para
 
 __version__ = '0.0.1'
 __license__ = 'MIT'
@@ -17,76 +15,22 @@ def setLogLevel(log_level):
     default_logger.setLevel(log_level)
 
 class Tokenizer(object):
-    ''' multi process to hanlde the wave tokenizer
+    ''' 多线程处理波形的特征抽取
     '''
 
     def __init__(self, name, dictionary=DEFAULT_DICT):
         self.lock = threading.RLock()
         self.name = name
-        self.time_feature_name = ["mean","max","min","std","median","p2p","rms","x_p","arv","r","kurtosis","skewness","pulse_factor","margin_factor","form_factor"]
 
     def __repr__(self):
         return 'Tokenizer of vibration-wave {}'.format(self.name)
 
-    def t_feature(self, array):
-        _mean = np.mean(sin_arr_mat, axis=-1)
-        _max = np.max(sin_arr_mat, axis=-1)
-        _min = np.min(sin_arr_mat, axis=-1)
-        _std = np.std(sin_arr_mat, axis=-1)
-        _median = np.median(sin_arr_mat, axis=-1)
-        _p2p = _max - _min
-        _rms = np.mean(sin_arr_mat**2, axis=-1)
-        _abs_max = np.abs(np.max(sin_arr_mat, axis=-1))
-        _abs_min = np.abs(np.min(sin_arr_mat, axis=-1))
-        _x_p = np.max(np.vstack([_abs_max, _abs_min]), axis=0)
-        _arv = np.mean(np.abs(sin_arr_mat), axis=-1)
-        _r = np.mean(np.sqrt(np.abs(sin_arr_mat)), axis=-1) ** 2
-        _kurtosis = scipy.stats.kurtosis(sin_arr_mat, axis=-1, fisher=True, bias=True)
-        _skewness = scipy.stats.skew(sin_arr_mat, axis=-1, bias=True)
-        _pulse_factor = _x_p/_arv
-        _margin_factor = _x_p/_r
-        _form_factor = _rms/_arv
-        return _mean, _max, _min, _std, _median, _p2p, _rms, _x_p, _arv, _r, _kurtosis, _skewness, _pulse_factor, _margin_factor, _form_factor
+    @staticmethod
+    def time_feature(array):
 
-    def f_feature(self, array, fs):
-        pass
 
-    def fft(self, array, num):
-        return fft(array, num)
-
-    def power(self, array, num):
-        return (np.abs(fft(array, num))**2)/num
-
-    def ifft(self, array, num):
-        return ifft(array, num)
-
-    def cepstrum(self, array, num):
-        '''cepstrum
-        signal->power->log->ifft
-        '''
-        spectrum = fft(array, num)
-        ceps = ifft(np.log(np.abs(spectrum))).real
-        return ceps
-
-    def envelope(self, array):
-        pass
-
-    def window(self, array, window_type='hamming'):
-        if window_type == "hamming":
-            return np.multiply(np.hamming(array.shape[-1]), sin_arr_mat)
-        else:
-            raise Exception('Oh, my friend. u should specified the window name first')
-
-    def divide(self, array, window_size, hop_size):
-        ''' request hop_size is (0,0.5)*window_size
-        '''
-        start,end,shape = 0,window_size,array.shape
-        while(True):
-            yield array[:,:]
-            start += hop_size
-            end += hop_size
-            if end > shape[1]:
-                break
+    @staticmethod
+    def freq_feature(array):
 
 class Tokenizer(object):
 
@@ -655,4 +599,3 @@ def disable_parallel():
         pool = None
     cut = dt.cut
     cut_for_search = dt.cut_for_search
-
