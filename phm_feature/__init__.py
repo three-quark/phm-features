@@ -1,10 +1,17 @@
 from __future__ import absolute_import, unicode_literals
-from scipy.fftback import fft,ifft
-from . import para
+import scipy.fftpack
+import scipy.signal
+import scipy.stats
+import logging
+import sys
+import threading
+import numpy as np
+
 
 __version__ = '0.0.1'
 __license__ = 'MIT'
 __name__ = 'phm_feature'
+
 
 _get_abs_path = lambda path: os.path.normpath(os.path.join(os.getcwd(), path))
 
@@ -17,10 +24,8 @@ def setLogLevel(log_level):
     default_logger.setLevel(log_level)
 
 class Tokenizer(object):
-    ''' multi process to hanlde the wave tokenizer
-    '''
 
-    def __init__(self, name, dictionary=DEFAULT_DICT):
+    def __init__(self, name):
         self.lock = threading.RLock()
         self.name = name
         self.time_feature_name = ["mean","max","min","std","median","p2p","rms","x_p","arv","r","kurtosis","skewness","pulse_factor","margin_factor","form_factor"]
@@ -28,21 +33,21 @@ class Tokenizer(object):
     def __repr__(self):
         return 'Tokenizer of vibration-wave {}'.format(self.name)
 
-    def feature_t(self, array):
-        _mean = np.mean(sin_arr_mat, axis=-1)
-        _max = np.max(sin_arr_mat, axis=-1)
-        _min = np.min(sin_arr_mat, axis=-1)
-        _std = np.std(sin_arr_mat, axis=-1)
-        _median = np.median(sin_arr_mat, axis=-1)
+    def feature_t(self, s):
+        _mean = np.mean(s, axis=-1)
+        _max = np.max(s, axis=-1)
+        _min = np.min(s, axis=-1)
+        _std = np.std(s, axis=-1)
+        _median = np.median(s, axis=-1)
         _p2p = _max - _min
-        _rms = np.mean(sin_arr_mat**2, axis=-1)
-        _abs_max = np.abs(np.max(sin_arr_mat, axis=-1))
-        _abs_min = np.abs(np.min(sin_arr_mat, axis=-1))
+        _rms = np.mean(s**2, axis=-1)
+        _abs_max = np.abs(np.max(s, axis=-1))
+        _abs_min = np.abs(np.min(s, axis=-1))
         _x_p = np.max(np.vstack([_abs_max, _abs_min]), axis=0)
-        _arv = np.mean(np.abs(sin_arr_mat), axis=-1)
-        _r = np.mean(np.sqrt(np.abs(sin_arr_mat)), axis=-1) ** 2
-        _kurtosis = scipy.stats.kurtosis(sin_arr_mat, axis=-1, fisher=True, bias=True)
-        _skewness = scipy.stats.skew(sin_arr_mat, axis=-1, bias=True)
+        _arv = np.mean(np.abs(s), axis=-1)
+        _r = np.mean(np.sqrt(np.abs(s)), axis=-1) ** 2
+        _kurtosis = scipy.stats.kurtosis(s, axis=-1, fisher=True, bias=True)
+        _skewness = scipy.stats.skew(s, axis=-1, bias=True)
         _pulse_factor = _x_p/_arv
         _margin_factor = _x_p/_r
         _form_factor = _rms/_arv
@@ -52,39 +57,39 @@ class Tokenizer(object):
         pass
 
     def fft(self, array, num):
-        return fft(array, num)
+        return scipy.fftpack.fft(array, num)
 
     def power(self, array, num):
-        return (np.abs(fft(array, num))**2)/num
+        return (np.abs(scipy.fftpack.fft(array, num))**2)/num
 
     def ifft(self, array, num):
-        return ifft(array, num)
+        return scipy.fftpack.ifft(array, num)
 
     def cepstrum(self, array, num):
         '''cepstrum
         signal->power->log->ifft
         '''
-        spectrum = fft(array, num)
-        ceps = ifft(np.log(np.abs(spectrum))).real
+        spectrum = scipy.fftpack.fft(array, num)
+        ceps = scipy.fftpack.ifft(np.log(np.abs(spectrum))).real
         return ceps
 
     def envelope(self, s):
         xh = scipy.signal.hilbert(s)
         xe = np.abs(xh)
-        xe = xe - np.mean(xe, axis=-1)
+        xe = xe - np.mean(xe, axis=0)
         xh3 = np.fft.rfft(xe) / len(xe)
         mag = np.abs(xh3) * 2
         #fre = np.linspace(0, fs / 2, int(len(xe) / 2 + 1))
         return mag
 
-    def fs2Fs(self, L, fs)
+    def fs2Fs(self, L, fs):
         ''' convert fs 2 Freqs list '''
         fre = np.linspace(0, fs / 2, int(L / 2 + 1))
         return fre
 
     def window(self, array, window_type='hamming'):
         if window_type == "hamming":
-            return np.multiply(np.hamming(array.shape[-1]), sin_arr_mat)
+            return np.multiply(np.hamming(array.shape[-1]), array)
         else:
             raise Exception('Oh, my friend. u should specified the window name first')
 
@@ -99,10 +104,8 @@ class Tokenizer(object):
             if end > shape[1]:
                 break
 
-
 # default Tokenizer instance
-dt = Tokenizer()
-
+dt = Tokenizer("ivystar")
 
 # global functions
 feature_t = dt.feature_t
@@ -114,8 +117,6 @@ cepstrum = dt.cepstrum
 envelope = dt.envelope
 window = dt.window
 divide = dt.divide
-
-
 
 def _pfeature_t(s):
     _s = s.reshape(-1, 1, s.shape[-1])
@@ -158,7 +159,9 @@ def _pwindow(s, window_type):
     return result
 
 def _pdivide(s, window_size, hop_size):
-    return dt.divide(s, window_size, hop_size)
+    _s = s.reshape(-1, 1, s.shape[-1])
+    result = pool.map(divide, (_s, window_size, hop_size,))
+    return result
 
 def enable_parallel(processnum=None):
     """
@@ -168,13 +171,12 @@ def enable_parallel(processnum=None):
     instances are not supported. 
     Auth: Qin Haining
     """
-
     global pool, feature_t, feature_f, fft, power, ifft, cepstrum, envelope, window, divide
-    from multiprocessing import cpu_count
     from multiprocessing import Pool
+    pool = Pool(processnum)
+    from multiprocessing import cpu_count
     if processnum is None:
         processnum = cpu_count()
-    pool = Pool(processnum)
     feature_t = _pfeature_t
     feature_f = _pfeature_f
     fft = _pfft
@@ -199,5 +201,4 @@ def disable_parallel():
     envelope = dt.envelope
     window = dt.window
     divide = dt.divide
-
 

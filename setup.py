@@ -5,7 +5,7 @@ with open("README.md", "r") as fh:
 
 setuptools.setup(
   name="phm_feature",
-  version="0.0.1",
+  version="0.0.2",
   author="qin_hain_ing",
   author_email="2364839934@qq.com",
   description="pick feature for phm",
