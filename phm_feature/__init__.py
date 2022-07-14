@@ -6,6 +6,10 @@ import logging
 import sys
 import threading
 import numpy as np
+from functools import partial
+from multiprocessing import cpu_count
+from multiprocessing import Pool
+import os
 
 
 __version__ = '0.0.1'
@@ -25,9 +29,9 @@ def setLogLevel(log_level):
 
 class Tokenizer(object):
 
-    def __init__(self, name):
-        self.lock = threading.RLock()
-        self.name = name
+    def __init__(self, name=__name__):
+        # self.lock = threading.RLock()
+        self.name = __name__
         self.time_feature_name = ["mean","max","min","std","median","p2p","rms","x_p","arv","r","kurtosis","skewness","pulse_factor","margin_factor","form_factor"]
 
     def __repr__(self):
@@ -46,8 +50,8 @@ class Tokenizer(object):
         _x_p = np.max(np.vstack([_abs_max, _abs_min]), axis=0)
         _arv = np.mean(np.abs(s), axis=-1)
         _r = np.mean(np.sqrt(np.abs(s)), axis=-1) ** 2
-        _kurtosis = scipy.stats.kurtosis(s, axis=-1, fisher=True, bias=True)
-        _skewness = scipy.stats.skew(s, axis=-1, bias=True)
+        _kurtosis = 1 #scipy.stats.kurtosis(s, axis=-1, fisher=True, bias=True)
+        _skewness = 1 #scipy.stats.skew(s, axis=-1, bias=True)
         _pulse_factor = _x_p/_arv
         _margin_factor = _x_p/_r
         _form_factor = _rms/_arv
@@ -82,6 +86,19 @@ class Tokenizer(object):
         #fre = np.linspace(0, fs / 2, int(len(xe) / 2 + 1))
         return mag
 
+    def yin(self, s, window_size):
+        yin_s = []
+        assert window_size < s.shape[-1]
+        start_l, end_l = 0, window_size
+        start_r, end_r = 0, window_size
+        while(True):
+            yin_s.append(np.subtract(s[:,end_l:end_r], s[:,start_l:start_r]))
+            end_r+=1
+            end_l+=1
+            if end_r > s.shape[-1]:
+                break
+        return np.array(yin_s).T
+
     def fs2Fs(self, L, fs):
         ''' convert fs 2 Freqs list '''
         fre = np.linspace(0, fs / 2, int(L / 2 + 1))
@@ -98,14 +115,14 @@ class Tokenizer(object):
         '''
         start,end,shape = 0,window_size,array.shape
         while(True):
-            yield array[:,:]
+            yield array[:,start:end]
             start += hop_size
             end += hop_size
             if end > shape[1]:
                 break
 
 # default Tokenizer instance
-dt = Tokenizer("ivystar")
+dt = Tokenizer()
 
 # global functions
 feature_t = dt.feature_t
@@ -117,50 +134,57 @@ cepstrum = dt.cepstrum
 envelope = dt.envelope
 window = dt.window
 divide = dt.divide
+yin = dt.yin
+
+def _feature_t(s):
+    return dt.feature_t(s)
+
+def _pyin(s, window_size):
+    _s = [np.array(_).reshape(1,-1) for _ in s.tolist()]
+    result = pool.map(partial(yin, window_size=window_size), _s)
+    return result
 
 def _pfeature_t(s):
-    _s = s.reshape(-1, 1, s.shape[-1])
-    result = pool.map(feature_t, _s)
+    _s = [np.array(_).reshape(1,-1) for _ in s.tolist()]
+    result = pool.map(_feature_t, _s)
     return result
 
 def _pfeature_f(s, fs):
-    _s = s.reshape(-1, 1, s.shape[-1])
-    result = pool.map(feature_f, _s)
-    return result
+    pass
 
-def _pfft(s, n):
-    _s = s.reshape(-1, 1, s.shape[-1])
-    result = pool.map(fft, (_s,n,))
+def _pfft(s, num):
+    _s = [np.array(_).reshape(1,-1) for _ in s.tolist()]
+    result = pool.map(partial(dt.fft, num=num), _s)
     return result
 
 def _ppower(s, n):
-    _s = s.reshape(-1, 1, s.shape[-1])
-    result = pool.map(power, _s)
+    _s = [np.array(_).reshape(1,-1) for _ in s.tolist()]
+    result = pool.map(partial(dt.power, num=n), _s)
     return result
 
 def _pifft(s, n):
-    _s = s.reshape(-1, 1, s.shape[-1])
-    result = pool.map(ifft, _s)
+    _s = [np.array(_).reshape(1,-1) for _ in s.tolist()]
+    result = pool.map(partial(dt.ifft, num=n), _s)
     return result
 
 def _pcepstrum(s, n):
-    _s = s.reshape(-1, 1, s.shape[-1])
-    result = pool.map(cepstrum, (_s, n,))
+    _s = [np.array(_).reshape(1,-1) for _ in s.tolist()]
+    result = pool.map(partial(dt.cepstrum, num=n), _s)
     return result
 
 def _penvelope(s):
-    _s = s.reshape(-1, 1, s.shape[-1])
-    result = pool.map(envelope, _s)
+    _s = [np.array(_).reshape(1,-1) for _ in s.tolist()]
+    result = pool.map(dt.envelope, _s)
     return result
 
 def _pwindow(s, window_type):
-    _s = s.reshape(-1, 1, s.shape[-1])
-    result = pool.map(window, (_s, window_type,))
+    _s = [np.array(_).reshape(1,-1) for _ in s.tolist()]
+    result = pool.map(partial(dt.window, window_type=window_type), _s)
     return result
 
 def _pdivide(s, window_size, hop_size):
-    _s = s.reshape(-1, 1, s.shape[-1])
-    result = pool.map(divide, (_s, window_size, hop_size,))
+    _s = [np.array(_).reshape(1,-1) for _ in s.tolist()]
+    result = pool.map(partial(dt.divide, window_size=window_size, hop_size=hop_size), _s)
     return result
 
 def enable_parallel(processnum=None):
@@ -172,13 +196,17 @@ def enable_parallel(processnum=None):
     Auth: Qin Haining
     """
     global pool, feature_t, feature_f, fft, power, ifft, cepstrum, envelope, window, divide
-    from multiprocessing import Pool
-    pool = Pool(processnum)
-    from multiprocessing import cpu_count
+    if os.name == 'nt':
+        raise NotImplementedError(
+            "parallel mode only supports posix system")
+    else:
+        from multiprocessing import Pool
     if processnum is None:
         processnum = cpu_count()
+    pool = Pool(processnum)
+    #print(_pfeature_t)
     feature_t = _pfeature_t
-    feature_f = _pfeature_f
+    #feature_f = _pfeature_f
     fft = _pfft
     power = _ppower
     ifft = _pifft
@@ -186,6 +214,8 @@ def enable_parallel(processnum=None):
     envelope = _penvelope
     window = _pwindow
     divide = _pdivide
+    yin = _pyin
+    print(">>> enable_parallel")
 
 def disable_parallel():
     global pool, feature_t, feature_f, fft, power, ifft, cepstrum, envelope, window, divide
@@ -201,4 +231,6 @@ def disable_parallel():
     envelope = dt.envelope
     window = dt.window
     divide = dt.divide
+    yin = dt.yin
+    print(">>> disable_parallel")
 

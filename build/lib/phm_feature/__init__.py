@@ -98,7 +98,7 @@ class Tokenizer(object):
         '''
         start,end,shape = 0,window_size,array.shape
         while(True):
-            yield array[:,:]
+            yield array[:,start:end]
             start += hop_size
             end += hop_size
             if end > shape[1]:
