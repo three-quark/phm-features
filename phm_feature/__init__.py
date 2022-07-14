@@ -54,7 +54,7 @@ class Tokenizer(object):
         return _mean, _max, _min, _std, _median, _p2p, _rms, _x_p, _arv, _r, _kurtosis, _skewness, _pulse_factor, _margin_factor, _form_factor
 
     def feature_f(self, array, fs):
-        pass
+        raise Exception('oh friend, sorry, this functions is not finish yet')
 
     def fft(self, array, num):
         return scipy.fftpack.fft(array, num)
