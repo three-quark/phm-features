@@ -88,16 +88,17 @@ class Tokenizer(object):
 
     def yin(self, s, window_size):
         yin_s = []
+        print(s.shape, window_size)
         assert window_size < s.shape[-1]
-        start_l, end_l = 0, window_size
-        start_r, end_r = 0, window_size
+        start_l, start_r = 0, window_size
+        end_l, end_r = 0, window_size
         while(True):
             yin_s.append(np.subtract(s[:,end_l:end_r], s[:,start_l:start_r]))
-            end_r+=1
             end_l+=1
+            end_r+=1
             if end_r > s.shape[-1]:
                 break
-        return np.array(yin_s).T
+        return np.array(yin_s)
 
     def fs2Fs(self, L, fs):
         ''' convert fs 2 Freqs list '''
@@ -113,13 +114,16 @@ class Tokenizer(object):
     def divide(self, array, window_size, hop_size):
         ''' request hop_size is (0,0.5)*window_size
         '''
+        results = []
         start,end,shape = 0,window_size,array.shape
         while(True):
-            yield array[:,start:end]
+            _cut_ = array[:,start:end]
+            results.append(_cut_)
             start += hop_size
             end += hop_size
             if end > shape[1]:
                 break
+        return np.array(results)
 
 # default Tokenizer instance
 dt = Tokenizer()
@@ -139,9 +143,36 @@ yin = dt.yin
 def _feature_t(s):
     return dt.feature_t(s)
 
+def _feature_f(s):
+    pass
+
+def _yin(s, window_size):
+    return dt.yin(s, window_size=window_size)
+
+def _fft(s, num):
+    return dt.fft(s, num=num)
+
+def _ifft(s, num):
+    return dt.ifft(s, num)
+
+def _power(s, num):
+    return dt.power(s, num)
+
+def _envelope(s):
+    return dt.envelope(s)
+
+def _window(s, window_type='hamming'):
+    return dt.window(s, window_type)
+
+def _cepstrum(s, num):
+    return dt.cepstrum(s, num)
+
+def _divide(s, window_size, hop_size):
+    return dt.divide(s, window_size, hop_size)
+
 def _pyin(s, window_size):
     _s = [np.array(_).reshape(1,-1) for _ in s.tolist()]
-    result = pool.map(partial(yin, window_size=window_size), _s)
+    result = pool.map(partial(_yin, window_size=window_size), _s)
     return result
 
 def _pfeature_t(s):
@@ -154,37 +185,37 @@ def _pfeature_f(s, fs):
 
 def _pfft(s, num):
     _s = [np.array(_).reshape(1,-1) for _ in s.tolist()]
-    result = pool.map(partial(dt.fft, num=num), _s)
+    result = pool.map(partial(_fft, num=num), _s)
     return result
 
 def _ppower(s, n):
     _s = [np.array(_).reshape(1,-1) for _ in s.tolist()]
-    result = pool.map(partial(dt.power, num=n), _s)
+    result = pool.map(partial(_power, num=n), _s)
     return result
 
 def _pifft(s, n):
     _s = [np.array(_).reshape(1,-1) for _ in s.tolist()]
-    result = pool.map(partial(dt.ifft, num=n), _s)
+    result = pool.map(partial(_ifft, num=n), _s)
     return result
 
 def _pcepstrum(s, n):
     _s = [np.array(_).reshape(1,-1) for _ in s.tolist()]
-    result = pool.map(partial(dt.cepstrum, num=n), _s)
+    result = pool.map(partial(_cepstrum, num=n), _s)
     return result
 
 def _penvelope(s):
     _s = [np.array(_).reshape(1,-1) for _ in s.tolist()]
-    result = pool.map(dt.envelope, _s)
+    result = pool.map(_envelope, _s)
     return result
 
 def _pwindow(s, window_type):
     _s = [np.array(_).reshape(1,-1) for _ in s.tolist()]
-    result = pool.map(partial(dt.window, window_type=window_type), _s)
+    result = pool.map(partial(_window, window_type=window_type), _s)
     return result
 
 def _pdivide(s, window_size, hop_size):
     _s = [np.array(_).reshape(1,-1) for _ in s.tolist()]
-    result = pool.map(partial(dt.divide, window_size=window_size, hop_size=hop_size), _s)
+    result = pool.map(partial(_divide, window_size=window_size, hop_size=hop_size), _s)
     return result
 
 def enable_parallel(processnum=None):
@@ -204,9 +235,8 @@ def enable_parallel(processnum=None):
     if processnum is None:
         processnum = cpu_count()
     pool = Pool(processnum)
-    #print(_pfeature_t)
     feature_t = _pfeature_t
-    #feature_f = _pfeature_f
+    feature_f = _pfeature_f
     fft = _pfft
     power = _ppower
     ifft = _pifft
@@ -215,7 +245,6 @@ def enable_parallel(processnum=None):
     window = _pwindow
     divide = _pdivide
     yin = _pyin
-    print(">>> enable_parallel")
 
 def disable_parallel():
     global pool, feature_t, feature_f, fft, power, ifft, cepstrum, envelope, window, divide
@@ -232,5 +261,4 @@ def disable_parallel():
     window = dt.window
     divide = dt.divide
     yin = dt.yin
-    print(">>> disable_parallel")
 
