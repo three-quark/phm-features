@@ -11,11 +11,9 @@ from multiprocessing import cpu_count
 from multiprocessing import Pool
 import os
 
-
-__version__ = '0.0.1'
+#__version__ = '0.0.5'
 __license__ = 'MIT'
 __name__ = 'phm_feature'
-
 
 _get_abs_path = lambda path: os.path.normpath(os.path.join(os.getcwd(), path))
 
